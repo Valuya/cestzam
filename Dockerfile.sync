@@ -1,0 +1,5 @@
+FROM  library/openjdk:11-jdk
+
+ADD cestzam-myminfin-filesystem-sync/target/cestzam-myminfin-filesystem-sync-jar-with-dependencies.jar /app.jar
+
+CMD java -jar /app.jar
