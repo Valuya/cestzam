@@ -43,7 +43,7 @@ pipeline {
                     sh 'gpg --allow-secret-key-import --import $GPGKEY'
                     sh "echo \"${params.GPG_KEY_FINGERPRINT}:6:\" | gpg --import-ownertrust"
                 }
-                withMaven(maven: 'maven', mavenSettingsConfig: 'ossrh-settings-xml') {
+                withMaven(maven: 'maven', mavenSettingsConfig: 'ossrh-settings-xml', jdk: 'jdk11') {
                     sh "mvn $MVN_ARGS $MVN_GOALS"
                     script {
                         VERSION = sh(script: 'JENKINS_MAVEN_AGENT_DISABLED=true mvn help:evaluate -Dexpression=project.version -q -DforceStdout | tail -n1', returnStdout: true).trim()
@@ -80,7 +80,7 @@ pipeline {
                         env.DO_DEPLOY = true
                     }
                 }
-                withMaven(maven: 'maven', mavenSettingsConfig: 'ossrh-settings-xml') {
+                withMaven(maven: 'maven', mavenSettingsConfig: 'ossrh-settings-xml', jdk: 'jdk11') {
                     sh "mvn $MVN_ARGS $MVN_GOALS"
                     script {
                         VERSION = sh(script: 'JENKINS_MAVEN_AGENT_DISABLED=true mvn help:evaluate -Dexpression=project.version -q -DforceStdout | tail -n1', returnStdout: true).trim()
