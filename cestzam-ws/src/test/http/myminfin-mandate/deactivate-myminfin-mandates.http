@@ -1,0 +1,11 @@
+POST {{ws-uri}}/cestzam/service/myminfin/mandate/deactivate
+Accept: application/json
+Content-Type: application/json
+
+{
+      "cestzamContext": "{{cestzamContext}}"
+}
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}

@@ -1,0 +1,26 @@
+java:
+  net:
+    preferIPv4Stack: true
+    preferIPv4Addresses: true
+
+thorntail:
+
+  bind:
+    address: 0.0.0.0
+
+  management:
+    bind:
+      address: 0.0.0.0
+
+  logging:
+    root-logger:
+      level: INFO
+
+  jaeger:
+    service-name: cestzam-ws
+
+  microprofile:
+    config:
+      config-sources:
+        MOUNTED_CONFIGS:
+          dir: /config/cestzam-ws

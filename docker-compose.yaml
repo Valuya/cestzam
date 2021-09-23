@@ -1,0 +1,25 @@
+version: '3.6'
+
+services:
+
+  cestzam-ws:
+    #    image: cestzam-ws
+    build: .
+    command: java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8787 -jar /app.jar -s/conf/thorntail.yml
+    env_file:
+      - ./runtime/config/jaeger.env
+      - ./runtime/config/cestzam.env
+      - ./runtime/config/cestzam.private.env
+    volumes:
+      - ./runtime/thorntail/config.yml:/conf/thorntail.yml
+      - ./runtime/config/cestzam.tokens.private.json:/config/cestzam-ws/cestzam.health.czam.tokensJson
+    ports:
+      - '18080:8080'
+      - '18787:8787'
+    networks:
+      - swarm
+
+
+networks:
+  swarm:
+    external: true

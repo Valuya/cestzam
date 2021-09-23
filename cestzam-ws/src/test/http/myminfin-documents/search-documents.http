@@ -1,0 +1,10 @@
+POST {{ws-uri}}/cestzam/service/myminfin/documents/search
+Accept: application/json
+Content-Type: application/json
+
+{
+"myminfinContext": {
+  "cestzamContext": "{{cestzamContext}}"
+  },
+  "provider": "FILENET_OSSTIRP"
+}

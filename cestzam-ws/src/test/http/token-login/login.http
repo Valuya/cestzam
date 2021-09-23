@@ -1,0 +1,14 @@
+POST {{ws-uri}}/cestzam/login/token
+Content-Type: application/json
+Accept: application/json
+
+{
+  "login": "{{token-user}}",
+  "password": "{{token-password}}",
+  "cestzamContext": "{{cestzamContext}}"
+}
+
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}

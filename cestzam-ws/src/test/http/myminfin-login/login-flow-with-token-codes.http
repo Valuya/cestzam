@@ -1,0 +1,43 @@
+# Click 'Run All Requests in File' above to init your authentication context
+
+POST {{ws-uri}}/cestzam/service/myminfin/login
+Accept: application/json
+Content-Type: application/json
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}
+
+###
+
+POST {{ws-uri}}/cestzam/login/token/withCodes
+Content-Type: application/json
+Accept: application/json
+
+{
+  "login": "{{token-user}}",
+  "password": "{{token-password}}",
+  "capacity": "ENTERPRISE",
+  "codes": {{token-codes}},
+  "cestzamContext": "{{cestzamContext}}"
+}
+
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}
+
+###
+
+POST {{ws-uri}}/cestzam/service/myminfin/login/complete
+Accept: application/json
+Content-Type: application/json
+
+{
+  "cestzamContext": "{{cestzamContext}}",
+  "requestedVatNumber": "{{myminfin-vat}}"
+}
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}

@@ -1,0 +1,8 @@
+.idea/
+cestzam-api/
+cestzam-api-client/
+cestzam-client/
+cestzam-ws/src/
+cestzam-ws/pom.xml/
+cestzam-ws/target/*/**
+cestzam-ws/target/*.war

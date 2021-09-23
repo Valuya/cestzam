@@ -1,0 +1,15 @@
+POST {{ws-uri}}/cestzam/login/token/verificationCode
+Content-Type: application/json
+Accept: application/json
+
+{
+  "tokenVerificationCode": "XXX",
+  "capacity": "ENTERPRISE",
+  "cestzamContext": "{{cestzamContext}}"
+}
+
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}
+

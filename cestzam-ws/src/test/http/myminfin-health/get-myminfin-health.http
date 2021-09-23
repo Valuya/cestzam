@@ -1,0 +1,4 @@
+GET {{ws-uri}}/cestzam/service/myminfin/health
+Accept: application/json
+Content-Type: application/json
+

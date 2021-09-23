@@ -1,0 +1,7 @@
+POST {{ws-uri}}/cestzam/service/myminfin/user
+Accept: application/json
+Content-Type: application/json
+
+{
+  "cestzamContext": "{{cestzamContext}}"
+}

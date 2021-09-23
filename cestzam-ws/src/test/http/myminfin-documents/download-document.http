@@ -1,0 +1,18 @@
+POST {{ws-uri}}/cestzam/service/myminfin/documents/download
+Accept: application/json
+Content-Type: application/json
+
+{
+"myminfinContext": {
+  "cestzamContext": "{{cestzamContext}}"
+  },
+"documentKey": {
+        "documentSelectorTypeKey": "PFO604AA_PRO",
+        "identifiers": {
+          "FILENET_UUID": "705dfa6d-1525-446f-9737-c46611c52945"
+        },
+        "providerName": "FILENET_OSSTIRP"
+      }
+      }
+
+

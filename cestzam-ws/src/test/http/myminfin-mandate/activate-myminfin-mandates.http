@@ -1,0 +1,30 @@
+POST {{ws-uri}}/cestzam/service/myminfin/mandate/activate
+Accept: application/json
+Content-Type: application/json
+
+{
+   "myminfinContext": {
+      "cestzamContext": "{{cestzamContext}}"
+   },
+   "mandate": {
+   "applicationName": "CONTENTIEUX",
+      "mandateApplication": "DISPUTE",
+      "mandateTypeNamesByLocale": {
+        "DE": "STREITSACHEN",
+        "FR": "CONTENTIEUX",
+        "NL": "GESCHILLEN"
+      },
+      "mandateeCompanyNumber": "0460365463",
+      "mandateeIdentifier": "0460365463",
+      "mandateeName": "COMPTA PLAN",
+      "mandateePersIdf": "000053873891",
+      "mandatorIdentifier": "0746561191",
+      "mandatorName": "KWANZA SOLUTIONS",
+      "mandatorPersIdf": "000067223408",
+      "mandatorType": "CORPORATE"
+   }
+}
+
+> {%
+ client.global.set("cestzamContext", response.body.cestzamContext);
+%}
