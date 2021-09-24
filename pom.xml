@@ -6,7 +6,7 @@
 
     <groupId>be.valuya.cestzam</groupId>
     <artifactId>cestzam-parent</artifactId>
-    <version>2021.5.2-SNAPSHOT</version>
+    <version>2021.9.1</version>
     <packaging>pom</packaging>
 
     <name>${project.groupId}:${project.artifactId}</name>
