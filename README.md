@@ -14,6 +14,11 @@ Once this service is started, a proxy serving the api is running on localhost po
 
 This service synchronizes the myminfin document with a filesystem copy in target/fs. See below for more information.
 
+Instead of building the images from this repository, you can as well use the published images on docker hub:
+- valuya/cestzam-ws:dev-latest
+- valuya/cestzam-myminfin-fs-sync:dev-latest
+
+Image are tagged with the release version, as well as ${branch}-latest for the latest build of the master and dev branches. See https://hub.docker.com/search?q=valuya&type=image.
   
 ## Myminfin synchronizer
 
