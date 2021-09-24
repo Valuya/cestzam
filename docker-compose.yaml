@@ -3,7 +3,7 @@ version: '3.6'
 services:
 
   cestzam-ws:
-    #    image: cestzam-ws
+    #    image: valuya/cestzam-ws:master-latest
     build: .
     command: java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8787 -jar /app.jar -s/conf/thorntail.yml
     env_file:
@@ -16,18 +16,18 @@ services:
     ports:
       - '18080:8080'
       - '18787:8787'
-    networks:
-      - swarm
 
   cestzam-sync:
-    image: openjdk:11
-    command: java -jar /myminfinsync.jar
+    #    image: valuya/cestzam-myminfin-fs-sync:master-latest
+    build:
+      context: .
+      dockerfile: Dockerfile.sync
     environment:
       - CESTZAM_TARGET_PATH=/fs
-      - CESTZAM_API_URI=cestzam-ws:8080/
+      - CESTZAM_API_URI=http://cestzam-ws:8080
       - CESTZAM_AUTH_LOGIN=
       - CESTZAM_AUTH_PASSWORD=
-      - 'CESTZAM_AUTH_TOKENS_JSON={"1": "ABCDEFG", ...}'
+      - 'CESTZAM_AUTH_TOKENS_JSON={"1":"AAAAAA","2":"BBBBBB"...}'
       # Only process a single mandator, by ssin (national number)
 #      - CESTZAM_MANDATOR_SINGLE_SSIN=
       # Only process mandators whom fullname matches pattern
@@ -37,10 +37,5 @@ services:
       # Only process documents from a specific date
 #      - CESTZAM_DOCUMENT_FROM_DATE=
     volumes:
-      - ./cestzam-myminfin-filesystem-sync/target/cestzam-myminfin-filesystem-sync-jar-with-dependencies.jar:/myminfinsync.jar
       - ./cestzam-myminfin-filesystem-sync/target/fs:/fs
 
-
-networks:
-  swarm:
-    external: true
