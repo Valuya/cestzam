@@ -63,7 +63,13 @@ public class CestzamRequestService {
     }
 
     public HttpResponse<String> getJson(String debugTag, HttpClient client, URI uri) {
-        HttpRequest request = createNewJsonRequestBuilder()
+        return getJson(debugTag, client, Map.of(), uri);
+    }
+
+    public HttpResponse<String> getJson(String debugTag, HttpClient client, Map<String, String> extraHeaders, URI uri) {
+        HttpRequest.Builder requestBuilder = createNewJsonRequestBuilder();
+        extraHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder
                 .GET()
                 .uri(uri)
                 .build();
@@ -73,12 +79,23 @@ public class CestzamRequestService {
                         .join());
     }
 
-
     public HttpResponse<String> postFormUrlEncodedAcceptHtml(String debugTag,
                                                              HttpClient client,
                                                              Map<String, String> formData,
                                                              String origin, String... parts) {
-        HttpRequest request = createNewPostFormUrlEncodedHtmlRequest(formData, origin, parts)
+        HttpRequest request = createNewPostFormUrlEncodedHtmlRequest(formData, createUri(origin, parts))
+                .build();
+        return getResponse(debugTag, client, request,
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                        .orTimeout(requestConfig.getTimeoutSecond(), TimeUnit.SECONDS)
+                        .join());
+    }
+
+    public HttpResponse<String> postFormUrlEncodedAcceptHtml(String debugTag,
+                                                             HttpClient client,
+                                                             Map<String, String> formData,
+                                                             URI uri) {
+        HttpRequest request = createNewPostFormUrlEncodedHtmlRequest(formData, uri)
                 .build();
         return getResponse(debugTag, client, request,
                 () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
@@ -91,7 +108,7 @@ public class CestzamRequestService {
                                                                      Map<String, String> formData,
                                                                      String origin, String parts
     ) {
-        HttpRequest request = createNewPostFormUrlEncodedHtmlRequest(formData, origin, parts)
+        HttpRequest request = createNewPostFormUrlEncodedHtmlRequest(formData, createUri(origin, parts))
                 .build();
         HttpResponse<InputStream> response = cestzamDebugService.trace(debugTag, request,
                 () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
@@ -130,6 +147,20 @@ public class CestzamRequestService {
                         .orTimeout(requestConfig.getTimeoutSecond(), TimeUnit.SECONDS)
                         .join());
     }
+
+    public HttpResponse<String> postJsonGetJson(String debugTag,
+                                                HttpClient client,
+                                                Map<String, String> extraHeaders,
+                                                String payload,
+                                                String origin, String... parts) {
+        HttpRequest request = createNewPostJsonJsonRequest(extraHeaders, payload, origin, parts)
+                .build();
+        return getResponse(debugTag, client, request,
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                        .orTimeout(requestConfig.getTimeoutSecond(), TimeUnit.SECONDS)
+                        .join());
+    }
+
 
     public HttpResponse<String> followRedirectsOnOrigin(String debugTag,
                                                         HttpClient client,
@@ -175,11 +206,11 @@ public class CestzamRequestService {
                 .headers("Cache-Control", "no-cache");
     }
 
-    public HttpRequest.Builder createNewPostFormUrlEncodedHtmlRequest(Map<String, String> formData, String origin, String... parts) {
+    public HttpRequest.Builder createNewPostFormUrlEncodedHtmlRequest(Map<String, String> formData, URI uri) {
         return createNewHtmlRequestBuilder()
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(formEncodedData(formData))
-                .uri(createUri(origin, parts));
+                .uri(uri);
     }
 
     public HttpRequest.Builder createNewPostJsonHtmlRequest(String payload, String origin, String... parts) {
@@ -190,8 +221,14 @@ public class CestzamRequestService {
     }
 
     public HttpRequest.Builder createNewPostJsonJsonRequest(String payload, String origin, String... parts) {
-        return createNewJsonRequestBuilder()
-                .header("Content-Type", "application/json")
+        return createNewPostJsonJsonRequest(Map.of(), payload, origin, parts);
+    }
+
+    public HttpRequest.Builder createNewPostJsonJsonRequest(Map<String, String> extraHeaders, String payload, String origin, String... parts) {
+        HttpRequest.Builder builder = createNewJsonRequestBuilder()
+                .header("Content-Type", "application/json");
+        extraHeaders.forEach(builder::header);
+        return builder
                 .POST(payload == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(payload))
                 .uri(createUri(origin, parts));
     }

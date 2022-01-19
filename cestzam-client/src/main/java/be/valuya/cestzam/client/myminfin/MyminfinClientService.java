@@ -11,6 +11,7 @@ import be.valuya.cestzam.client.myminfin.rest.MyminfinRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.UserData;
 import be.valuya.cestzam.client.request.CestzamRequestService;
 import be.valuya.cestzam.client.response.CestzamResponseService;
+import org.jsoup.Jsoup;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
@@ -51,34 +52,51 @@ public class MyminfinClientService {
         JsonObject languagePayload = Json.createObjectBuilder()
                 .add("language", "fr")
                 .build();
+        // 2022-01: uri changed with /public path name & accept: json
         HttpResponse<String> languageResponse = cestzamRequestService.followRedirects(debugTag, client,
-                cestzamRequestService.postJsonGetHtml(debugTag, client, languagePayload.toString(), MYMINFIN_ORIGIN, "myminfin-rest/portal/language")
+                cestzamRequestService.postJsonGetJson(debugTag, client, languagePayload.toString(), MYMINFIN_ORIGIN, "myminfin-rest/portal/public/language")
         );
         cestzamResponseService.assertSuccessStatusCode(languageResponse);
 
         // Load of main page
+        // 2022-01: pages subpath appended. Racaptcha resources loaded (warning)
         HttpResponse<String> homepageResponse = cestzamRequestService.followRedirects(debugTag, client,
-                cestzamRequestService.getHtml(debugTag, client, MYMINFIN_ORIGIN, "myminfin-web")
+                cestzamRequestService.getHtml(debugTag, client, MYMINFIN_ORIGIN, "myminfin-web/pages")
         );
         cestzamResponseService.assertSuccessStatusCode(homepageResponse);
 
         // Click on login
-        HttpResponse<String> loginResponse = cestzamRequestService.followRedirects(debugTag, client,
+        HttpResponse<String> czamSaml2Response = cestzamRequestService.followRedirects(debugTag, client,
                 cestzamRequestService.getHtml(debugTag, client, MYMINFIN_ORIGIN, "myminfin-web/pages/private/login")
         );
-        cestzamResponseService.assertSuccessStatusCode(loginResponse);
-        URI responseUri = loginResponse.uri();
+        cestzamResponseService.assertSuccessStatusCode(czamSaml2Response);
 
-        String spEntityID = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*spEntityID=([^&]+).*")
-                .orElseThrow(() -> new CestzamClientError("Expected spEntityID in uri param"));
-        String service = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*service=([^&]+).*")
-                .orElseThrow(() -> new CestzamClientError("Expected service in uri param"));
-        String gotoValue = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*goto=([^&]+).*")
-                .orElseThrow(() -> new CestzamClientError("Expected goto in uri param"));
+        URI loginUri;
+        String saml2RequestToken;
+        String secondVisitUrl;
+        if (czamSaml2Response.statusCode() == 200) {
+            // 2022-01: We get another response with another form and a js script.
+            // The script attempts to store hidden input values in session storage then set the location to
+            // the value of another input field.
+
+            saml2RequestToken = cestzamResponseService.searchAttributeInDom(czamSaml2Response.body(), "input#saml2Request", "value")
+                    .orElseThrow((() -> new CestzamClientError("Expected saml2Request element in dom, none found")));
+            secondVisitUrl = cestzamResponseService.searchAttributeInDom(czamSaml2Response.body(), "input#secondVisitUrl", "value")
+                    .map(s -> Jsoup.parse(s).body().text()) // escaped html charactes hex-codes
+                    .orElseThrow((() -> new CestzamClientError("Expected secondVisitUrl element in dom, none found")));
+
+            String loginUrl = cestzamResponseService.searchAttributeInDom(czamSaml2Response.body(), "input#loginUrl", "value")
+                    .map(s -> Jsoup.parse(s).body().text()) // escaped html charactes hex-codes
+                    .orElseThrow((() -> new CestzamClientError("Expected loginUrl element in dom, none found")));
+
+            loginUri = URI.create(loginUrl);
+        } else {
+            throw new CestzamClientError("Unexpected response status: " + czamSaml2Response.statusCode());
+        }
 
         CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-
-        return new CestzamLoginContext(spEntityID, service, gotoValue, updatedCookies);
+        CestzamLoginContext cestzamLoginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, updatedCookies);
+        return cestzamLoginContext;
     }
 
     public CestzamAuthenticatedMyminfinContext completeLoginFlow(CestzamAuthenticatedSamlResponse authenticatedSamlResponse) throws CestzamClientError {

@@ -13,6 +13,9 @@ public class CestzamTokenVerificationResponse {
     private String czamRequestId;
     private String codeLabel;
     private int codeNumber;
+    private String authId;
 
+    private String saml2TokenRequest;
+    private String secondVisitUrl;
 
 }
