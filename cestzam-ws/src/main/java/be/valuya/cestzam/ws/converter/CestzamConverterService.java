@@ -17,9 +17,9 @@ public class CestzamConverterService {
     public <T extends WithCestzamContext> void setCestzamContext(T withContext, CestzamLoginContext cestzamLoginContext) {
         GenericCestzamContext genericCestzamContext = new GenericCestzamContext();
         genericCestzamContext.setCookies(cestzamLoginContext.getCestzamCookies());
-        genericCestzamContext.setGotoValue(cestzamLoginContext.getGotoValue());
-        genericCestzamContext.setSpEntityId(cestzamLoginContext.getSpEntityId());
-        genericCestzamContext.setService(cestzamLoginContext.getService());
+        genericCestzamContext.setLoginUri(cestzamLoginContext.getLoginUri().toString());
+        genericCestzamContext.setSaml2RequestToken(cestzamLoginContext.getSaml2RequestToken());
+        genericCestzamContext.setSecondVisitUrl(cestzamLoginContext.getSecondVisitUrl());
         String encodedContext = encodeContext(genericCestzamContext);
         withContext.setCestzamContext(encodedContext);
     }

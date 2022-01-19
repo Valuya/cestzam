@@ -5,12 +5,14 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.net.URI;
+
 @Getter
 @Setter
 @AllArgsConstructor
 public class CestzamLoginContext {
-    private String spEntityId;
-    private String service;
-    private String gotoValue;
+    private URI loginUri;
+    private String saml2RequestToken;
+    private String secondVisitUrl;
     private CestzamCookies cestzamCookies;
 }

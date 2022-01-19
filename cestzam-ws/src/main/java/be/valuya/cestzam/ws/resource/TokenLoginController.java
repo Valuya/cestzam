@@ -24,6 +24,7 @@ import javax.inject.Inject;
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.ServiceUnavailableException;
 import java.io.IOException;
+import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -53,10 +54,17 @@ public class TokenLoginController implements TokenLoginResource {
             String codeLabel = cestzamTokenVerificationResponse.getCodeLabel();
             CestzamCookies cookies2 = cestzamTokenVerificationResponse.getCookies();
             String czamRequestId = cestzamTokenVerificationResponse.getCzamRequestId();
+            String authId = cestzamTokenVerificationResponse.getAuthId();
+            String saml2TokenRequest = cestzamTokenVerificationResponse.getSaml2TokenRequest();
+            String secondVisitUrl = cestzamTokenVerificationResponse.getSecondVisitUrl();
 
             GenericCestzamContext genricContext2 = new GenericCestzamContext();
             genricContext2.setRequestId(czamRequestId);
             genricContext2.setCookies(cookies2);
+            genricContext2.setTokenAuthId(authId);
+            genricContext2.setTokenRequested(codeLabel);
+            genricContext2.setSaml2RequestToken(saml2TokenRequest);
+            genricContext2.setSecondVisitUrl(secondVisitUrl);
 
             TokenLoginResponse loginResponse = new TokenLoginResponse();
             loginResponse.setVerificationTokenNumberLabel(codeLabel);
@@ -75,9 +83,14 @@ public class TokenLoginController implements TokenLoginResource {
         GenericCestzamContext cestzamContext = cestzamConverterService.getCestzamContext(request);
         String requestId = cestzamContext.getRequestId();
         CestzamCookies cookies = cestzamContext.getCookies();
+        String tokenAuthId = cestzamContext.getTokenAuthId();
+        String tokenRequested = cestzamContext.getTokenRequested();
+        String saml2RequestToken = cestzamContext.getSaml2RequestToken();
+        String secondVisitUrl = cestzamContext.getSecondVisitUrl();
 
         try {
-            CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = loginClientService.completeTokenLoginFlow(cookies, czamCapacity, requestId, tokenVerificationCode);
+            CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = loginClientService.completeTokenLoginFlow(cookies, czamCapacity,
+                    requestId, tokenRequested, tokenAuthId, tokenVerificationCode, saml2RequestToken, secondVisitUrl);
             CestzamCookies cookies2 = cestzamAuthenticatedSamlResponse.getCookies();
             String relayState = cestzamAuthenticatedSamlResponse.getRelayState();
             String samlResponse = cestzamAuthenticatedSamlResponse.getSamlResponse();
@@ -102,11 +115,12 @@ public class TokenLoginController implements TokenLoginResource {
         Map<Integer, String> codes = this.getRequestCodes(request);
         CzamCapacity czamCapacity = czamCapacityConverter.toCzamCapcity(capacity);
         GenericCestzamContext cestzamContext = cestzamConverterService.getCestzamContext(request);
-        String service = cestzamContext.getService();
-        String spEntityId = cestzamContext.getSpEntityId();
-        String gotoValue = cestzamContext.getGotoValue();
+        String loginUriString = cestzamContext.getLoginUri();
+        URI loginUri = URI.create(loginUriString);
         CestzamCookies cookies = cestzamContext.getCookies();
-        CestzamLoginContext loginContext = new CestzamLoginContext(spEntityId, service, gotoValue, cookies);
+        String saml2RequestToken = cestzamContext.getSaml2RequestToken();
+        String secondVisitUrl = cestzamContext.getSecondVisitUrl();
+        CestzamLoginContext loginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, cookies);
 
         try {
             CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = loginClientService.doTokenLogin(loginContext, czamCapacity, login, password, codes);

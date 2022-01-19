@@ -24,12 +24,16 @@ public class GenericCestzamContext {
     private String relayState;
     private String fgovWResult;
     // On login request only:
-    private String spEntityId;
-    private String service;
-    private String gotoValue;
+    private String loginUri;
+    // token stored in session during the czam authentication flow
+    private String saml2RequestToken;
+    private String secondVisitUrl;
     // The redirect url from czam back to the service
     private String serviceRedirectUrl;
     private CzamCapacity czamCapacity;
+    // During token code flow
+    private String tokenAuthId;
+    private String tokenRequested;
     // On login flow response
     private String requestId;
     // When citizen info fetched

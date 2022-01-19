@@ -7,11 +7,18 @@ import be.valuya.cestzam.client.error.CzamSessionTimeoutError;
 import be.valuya.cestzam.client.error.CestzamClientError;
 import be.valuya.cestzam.client.request.CestzamRequestService;
 import be.valuya.cestzam.client.response.CestzamResponseService;
+import org.intellij.lang.annotations.Pattern;
+import org.jsoup.Jsoup;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
 import javax.json.Json;
+import javax.json.JsonArray;
 import javax.json.JsonObject;
+import javax.json.JsonReader;
+import javax.json.JsonString;
+import javax.json.JsonValue;
+import java.io.IOException;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.net.CookieManager;
@@ -20,12 +27,21 @@ import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class CzamLoginClientService {
+
     public final static String CZAM_ORIGIN = "https://idp.iamfas.belgium.be";
+    private final static String ITSME_ORIGIN = "https://merchant.itsme.be";
+
+    // Supported major api versions for /fasui/api. Used in pattern, so dots will match all chars
+    private final List<String> CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES = List.of(CZAM_API_V19);
+    public static final String CZAM_API_V19 = "19";
 
     @Inject
     private CestzamClientService cestzamClientService;
@@ -43,10 +59,14 @@ public class CzamLoginClientService {
         CestzamTokenVerificationResponse cestzamTokenVerificationResponse = startTokenLoginFlow(loginContext, login, password);
         CestzamCookies updatedCookies = cestzamTokenVerificationResponse.getCookies();
         int codeNumber = cestzamTokenVerificationResponse.getCodeNumber();
+        String codeLabel = cestzamTokenVerificationResponse.getCodeLabel();
         String czamRequestId = cestzamTokenVerificationResponse.getCzamRequestId();
+        String authId = cestzamTokenVerificationResponse.getAuthId();
 
         String verificationCode = findCode(codeNumber, tokenCodes);
-        return completeTokenLoginFlow(updatedCookies, czamCapacity, czamRequestId, verificationCode);
+
+        return completeTokenLoginFlow(updatedCookies, czamCapacity, czamRequestId, codeLabel, authId, verificationCode,
+                loginContext.getSaml2RequestToken(), loginContext.getSecondVisitUrl());
     }
 
 
@@ -56,122 +76,208 @@ public class CzamLoginClientService {
         CookieManager cookieManager = (CookieManager) client.cookieHandler()
                 .orElseThrow(IllegalStateException::new);
 
-        // A request seems to be made with this non-http-only  cookie, set from js:
-        // 2021-05-18 Removed. The cookie is now set correctly in the previous response header
-//        createIAALangCookie(cookieManager);
+        String requestId = initCzamSinglePageApp(loginContext, debugTag, client, cookieManager);
 
-        // Click on 'login with security code via token'
-        HttpResponse<String> tokenLoginFormResponse = cestzamRequestService.getHtml(debugTag, client, CZAM_ORIGIN, "fasui/login/citizentokenservice");
-        checkNoError(tokenLoginFormResponse);
+        // Assume V19 for now: apiVersion.equals(V19)
+        String apiVersion = fetchCzamApiVersion(client, debugTag);
 
-        // Submit of login+password form
-        String tokenLoginForm = tokenLoginFormResponse.body();
-        String requestId = cestzamResponseService.searchAttributeInDom(tokenLoginForm, "input[name=requestId]", "value")
-                .orElseThrow(() -> new CestzamClientError("Expected a input[name=requestId] in the dom, but none found"));
-        String submissionToken = this.createSubmissionId();
-        Map<String, String> formParam = Map.of(
-                "IDToken1", login,
-                "IDToken2", password,
-                "requestId", requestId,
-                "submissionToken", submissionToken);
-        HttpResponse<String> loginResponse2 = cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, formParam, CZAM_ORIGIN, "fasui/login/citizentokenservice");
-        checkNoError(loginResponse2);
 
-        HttpResponse<String> loginLabelsResponse = cestzamRequestService.getJson(debugTag, client, CZAM_ORIGIN, "fasui/labels?language=fr");
-        checkNoError(loginLabelsResponse);
-        String jsonBody = loginLabelsResponse.body();
-        JsonObject labelsJson = Json.createReader(new StringReader(jsonBody))
-                .readObject();
-        JsonObject tokenLabelsJson = labelsJson.getJsonObject("token");
-        String tokenLabelString = tokenLabelsJson.getString("authMean_token_step2");
-        int tokenInt = parseTokenInt(tokenLabelString);
+        // Post username-password
+        String loginpasswordPayload = Json.createObjectBuilder(Map.of(
+                "username", login,
+                "password", password,
+                "token", "",
+                "tokenRequested", ""
+        )).build().toString();
+        HttpResponse<String> usernamePasswordResponse = cestzamRequestService.postJsonGetJson(debugTag, client, loginpasswordPayload, CZAM_ORIGIN, "/fasui/api/login/citizentokenservice/username-password", requestId);
+        checkNoError(usernamePasswordResponse);
 
+        String tokenRequestedValue;
+        String authIdToken;
+        JsonReader usernamePasswordResponseJson = Json.createReader(new StringReader(usernamePasswordResponse.body()));
+        JsonObject usernamePasswordObject = usernamePasswordResponseJson.readObject();
+        try {
+            JsonString tokenRequested = (JsonString) usernamePasswordObject.get("tokenRequested");
+            tokenRequestedValue = tokenRequested.getString();
+        } catch (Exception e) {
+            throw new CestzamClientError("Expected a requested token, but got error " + e.getMessage());
+        }
+        try {
+            JsonString authIdValue = (JsonString) usernamePasswordObject.get("authId");
+            authIdToken = authIdValue.getString();
+        } catch (Exception e) {
+            throw new CestzamClientError("Expected a authId token, but got error " + e.getMessage());
+        }
+        int tokenInt = parseTokenInt(tokenRequestedValue);
         CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-        return new CestzamTokenVerificationResponse(updatedCookies, requestId, tokenLabelString, tokenInt);
+        return new CestzamTokenVerificationResponse(updatedCookies, requestId, tokenRequestedValue, tokenInt, authIdToken,
+                loginContext.getSaml2RequestToken(), loginContext.getSecondVisitUrl());
     }
 
-
-    public CestzamAuthenticatedSamlResponse completeTokenLoginFlow(CestzamCookies cookies, CzamCapacity czamCapacity, String requestId, String validationCode) throws CestzamClientError {
+    public CestzamAuthenticatedSamlResponse completeTokenLoginFlow(CestzamCookies cookies, CzamCapacity czamCapacity, String requestId,
+                                                                   String requestedToken, String authId, String requestedTokenValue,
+                                                                   String saml2RequestToken, String secondVisitUrl) throws CestzamClientError {
         HttpClient client = cestzamClientService.createNoRedirectClient(cookies);
         String debugTag = cestzamDebugService.createFlowDebugTag("czam", "completeTokenLogin");
+        String tokenIdValue;
+        String gotoUrl;
+        List<String> postAuthenticationSteps;
 
-        // POST validation code
-        HttpResponse<String> loginResponse;
         {
-            // IDToken1=FAQICE&requestId=s24bbe149010748eb25c89a3ce78032d86b0c5477d&submissionToken=268ftqix7ezd2gmbu6m80
-            String submissionToken = this.createSubmissionId();
-            Map<String, String> formParam = Map.of(
-                    "IDToken1", validationCode,
-                    "requestId", requestId,
-                    "submissionToken", submissionToken);
-            loginResponse = cestzamRequestService.followRedirects(debugTag, client,
-                    cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, formParam, CZAM_ORIGIN, "fasui/login/citizentokenservice")
-            );
-            checkNoError(loginResponse);
+            String requestedTokenValuePayload = Json.createObjectBuilder(Map.of(
+                    "token", requestedTokenValue,
+                    "tokenRequested", requestedToken
+            )).build().toString();
+
+            HttpResponse<String> usernamePasswordResponse = cestzamRequestService.postJsonGetJson(debugTag, client,
+                    Map.of("auth-id", authId),
+                    requestedTokenValuePayload, CZAM_ORIGIN, "/fasui/api/login/citizentokenservice/token", requestId);
+            checkNoError(usernamePasswordResponse);
+            //  {"authId":null,"tokenId":"GCm10xCIEXlz_ukpfH1MAslhZt0.*AAJTSQACMDIAAlNLABxNN201ZzAxMU91bnBYbFV3T2dWSXJBSVVTc3c9AAR0eXBlAANDVFMAAlMxAAIwMQ..*","postAuthenticationSteps":[],"gotoUrl":null}
+            JsonReader usernameResponseReader = Json.createReader(new StringReader(usernamePasswordResponse.body()));
+            JsonObject usernameResponseObject = usernameResponseReader.readObject();
+
+            try {
+                JsonString tokenIdJsonString = (JsonString) usernameResponseObject.get("tokenId");
+                tokenIdValue = tokenIdJsonString.getString();
+            } catch (Exception e) {
+                throw new CestzamClientError("Expected  tokenId in json response");
+            }
+            try {
+                JsonValue gotoUrlJsonValue = usernameResponseObject.get("gotoUrl");
+                gotoUrl = gotoUrlJsonValue.getValueType() == JsonValue.ValueType.NULL ? null : ((JsonString) gotoUrlJsonValue).getString();
+            } catch (Exception e) {
+                throw new CestzamClientError("Expected  gotoUrl in json response");
+            }
+            try {
+                JsonArray postAuthenticationStepsValue = (JsonArray) usernameResponseObject.get("postAuthenticationSteps");
+                postAuthenticationSteps = postAuthenticationStepsValue.stream()
+                        .map(v -> (JsonString) v)
+                        .map(JsonString::getString)
+                        .collect(Collectors.toList());
+            } catch (Exception e) {
+                throw new CestzamClientError("Expected  gotoUrl in json response");
+            }
         }
 
-        return completeFlowBackToCzam(czamCapacity, client, debugTag, loginResponse);
+        return completeCzamPostAuthenticationFlow(client, requestId, tokenIdValue, "citizentokenservice",
+                gotoUrl, postAuthenticationSteps,
+                czamCapacity, saml2RequestToken, secondVisitUrl);
     }
 
-    private CestzamAuthenticatedSamlResponse completeFlowBackToCzam(CzamCapacity czamCapacity, HttpClient client, String debugTag, HttpResponse<String> loginResponse) throws CestzamClientError {
-        URI responseUri = loginResponse.uri();
-        boolean setCapacityPage = responseUri.getPath().equalsIgnoreCase("/fasui/setCapacity");
-        boolean setCapacityForExternalPartnerPage = responseUri.getPath().equalsIgnoreCase("/fasui/setCapacityForExternalPartner");
+    private CestzamAuthenticatedSamlResponse completeCzamPostAuthenticationFlow(HttpClient client, String requestId, String tokenId,
+                                                                                String service,
+                                                                                String gotoUrl, List<String> postSteps, CzamCapacity czamCapacity,
+                                                                                String saml2RequestToken, String secondVisitUrl) throws CestzamClientError {
+        String debugTag = cestzamDebugService.createFlowDebugTag("czam", "postAuthentication");
 
-        if (setCapacityPage) {
-            // citizen or entreprise login
-            String submissionToken = this.createSubmissionId();
-            Map<String, String> formParam = Map.of(
-                    "capacity", czamCapacity.getName(),
-                    "submissionToken", submissionToken);
-            loginResponse = cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, formParam, CZAM_ORIGIN, "fasui/setCapacity");
-            checkNoError(loginResponse);
-        } else if (setCapacityForExternalPartnerPage) {
-            /**
-             *  <form class="form-horizontal" method="post" action="setCapacityForExternalPartner">
-             *
-             *             <div class="col-md-8">
-             *     <label class="radio-inline">
-             *         <input type="radio" name="capacity" id="citizen" value="citizen" />
-             *         <text lang="default" translate="auth_capacity_citizen">in your own name</text>
-             *     </label>
-             * </div>
-             *
-             *
-             *             <div class="col-md-8">
-             *     <label class="radio-inline">
-             *         <input type="radio" name="capacity" id="enterprise" value="enterprise" />
-             *         <text lang="default" translate="auth_capacity_enterprise">in the name of a company</text>
-             *     </label>
-             * </div>
-             *
-             *
-             *         <button type="submit" lang="default" class="btn btn-default btn-lg purple" translate="auth_button_continue">Next</button>
-             *     </form>
-             */
-            Map<String, String> formParam = Map.of(
-                    "capacity", czamCapacity.getName()
-            );
-            loginResponse = cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, formParam, CZAM_ORIGIN, "fasui/setCapacityForExternalPartner");
-            checkNoError(loginResponse);
+        if (postSteps.contains("capacity")) {
+            setCzamCapacity(client, debugTag, requestId, tokenId, service, czamCapacity);
         }
 
-        HttpResponse<String> samlResponse = cestzamRequestService.followRedirectsOnOrigin(debugTag, client, loginResponse);
-        checkNoError(samlResponse);
-        String samlResponseBody = samlResponse.body();
-        Optional<String> serviceRedirectLocation = samlResponse.headers().firstValue("location");
+        {
+            URI postAuthUri = cestzamRequestService.createUri(CZAM_ORIGIN, "/fasui/api/post-authentication", requestId);
+            HttpResponse<String> postAuthResponse = cestzamRequestService.getJson(debugTag, client,
+                    Map.of("token-id", tokenId), postAuthUri
+            );
+            checkNoError(postAuthResponse);
+            // {"gotoUrl":"https://idp.iamfas.belgium.be:443/fas/saml2/continue/metaAlias/idp?secondVisitUrl=/fas/SSOPOST/metaAlias/idp?ReqID=w5bpl8gsoh7e0onkc54hurcj056"}
+            JsonReader postAuthResponseReader = Json.createReader(new StringReader(postAuthResponse.body()));
+            JsonObject postAuthResponseObject = postAuthResponseReader.readObject();
+            if (gotoUrl == null) {
+                try {
+                    JsonValue gotoUrlJsonValue = postAuthResponseObject.get("gotoUrl");
+                    gotoUrl = ((JsonString) gotoUrlJsonValue).getString();
+                } catch (Exception e) {
+                    throw new CestzamClientError("Expected  gotoUrl in json response");
+                }
+            }
+        }
 
+        if (gotoUrl == null) {
+            throw new CestzamClientError("Expected  gotoUrl in json response");
+        }
+        {
+            URI gotoUri = URI.create(gotoUrl);
+            HttpResponse<String> gotoResponse = cestzamRequestService.getHtml(debugTag, client, gotoUri);
+            checkNoError(gotoResponse);
+
+            // Response is a form and an injected script that submits the samle2Request stored in sessionStorage to
+            // the secondVisitUrl
+            URI secondVisitUri = cestzamRequestService.createUri(CZAM_ORIGIN, secondVisitUrl);
+            Map<String, String> formData = Map.of(
+                    "saml2Request", saml2RequestToken
+            );
+            HttpResponse<String> saml2Response = cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, formData, secondVisitUri);
+            checkNoError(saml2Response);
+
+            // Response is a form with the new saml token + relay state
+            String saml2ResponseBody = saml2Response.body();
+            String samlResponseToken = cestzamResponseService.searchAttributeInDom(saml2ResponseBody, "input[name=SAMLResponse]", "value")
+                    .orElseThrow((() -> new CestzamClientError("Expected SAMLResponse element in dom, none found")));
+            String relayStateToken = cestzamResponseService.searchAttributeInDom(saml2ResponseBody, "input[name=RelayState]", "value")
+                    .orElseThrow((() -> new CestzamClientError("Expected RelayState element in dom, none found")));
+            String formActionUrlString = cestzamResponseService.searchAttributeInDom(saml2ResponseBody, "form", "action")
+                    .map(s -> Jsoup.parse(s).body().text()) // html-escaped characters
+                    .orElseThrow((() -> new CestzamClientError("Expected form element in dom, none found")));
+
+            CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
+            return new CestzamAuthenticatedSamlResponse(updatedCookies, samlResponseToken, relayStateToken, Optional.of(formActionUrlString));
+        }
+    }
+
+    private CestzamAuthenticatedSamlResponse completeCzamExternalPartnerFlow(HttpClient client, CzamCapacity czamCapacity,
+                                                                             CestzamLoginContext loginContext,
+                                                                             HttpResponse<String> loginResponse) throws CestzamClientError {
+        String debugTag = cestzamDebugService.createFlowDebugTag("czam", "postAuthenticationExternal");
+
+        String secondVisitUrl = loginContext.getSecondVisitUrl();
+        String saml2RequestToken = loginContext.getSaml2RequestToken();
+        // Response is a form and an injected script that submits the samle2Request stored in sessionStorage to
+        // the secondVisitUrl
+        URI secondVisitUri = cestzamRequestService.createUri(CZAM_ORIGIN, secondVisitUrl);
+        Map<String, String> formData = Map.of(
+                "saml2Request", saml2RequestToken
+        );
+        HttpResponse<String> saml2Response = cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, formData, secondVisitUri);
+        HttpResponse<String> redirectedSaml2Response = cestzamRequestService.followRedirectsOnOrigin(debugTag, client, saml2Response);
+        checkNoError(redirectedSaml2Response);
+
+
+        URI responseUri = redirectedSaml2Response.uri();
+        boolean setCapacityForExternalPartnerPage = responseUri.getPath().equalsIgnoreCase("/fasui/setCapacityForExternalPartner");
+        HttpResponse<String> samlFormResponse;
+
+        if (setCapacityForExternalPartnerPage) {
+            String requestId = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*requestId=([^&]*).*")
+                    .orElseThrow(() -> new CestzamClientError("Expected requestId query param"));
+            String tokenId = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*tokenId=([^&]*).*")
+                    .orElseThrow(() -> new CestzamClientError("Expected tokenId query param"));
+            String authnService = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*authnService=([^&]*).*")
+                    .orElseThrow(() -> new CestzamClientError("Expected authnService query param"));
+            String gotoValue = cestzamResponseService.parseURIParamsGroup1(responseUri, ".*goto=([^&]*).*")
+                    .orElseThrow(() -> new CestzamClientError("Expected goto query param"));
+
+            setCzamCapacity(client, debugTag, requestId, tokenId, authnService, czamCapacity);
+
+            samlFormResponse = cestzamRequestService.getHtml(debugTag, client, URI.create(gotoValue));
+        } else {
+            throw new CestzamClientError("Expected to be forwarded to setCapacityForExternalPartner");
+        }
+        checkNoError(samlFormResponse);
+        String samlResponseBody = samlFormResponse.body();
 
         String samlResponseToken = cestzamResponseService.searchAttributeInDom(samlResponseBody, "input[name=SAMLResponse]", "value")
                 .orElseThrow((() -> new CestzamClientError("Expected SAMLResponse element in dom, none found")));
-
         String relayStateToken = cestzamResponseService.searchAttributeInDom(samlResponseBody, "input[name=RelayState]", "value")
                 .orElseThrow((() -> new CestzamClientError("Expected RelayState element in dom, none found")));
+        String formActionUrlString = cestzamResponseService.searchAttributeInDom(samlResponseBody, "form", "action")
+                .map(s -> Jsoup.parse(s).body().text()) // html-escaped characters
+                .orElseThrow((() -> new CestzamClientError("Expected form element in dom, none found")));
 
         CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-        return new CestzamAuthenticatedSamlResponse(updatedCookies, samlResponseToken, relayStateToken, serviceRedirectLocation);
+        return new CestzamAuthenticatedSamlResponse(updatedCookies, samlResponseToken, relayStateToken, Optional.of(formActionUrlString));
     }
-
 
     private void checkNoError(HttpResponse<String> response) throws CestzamClientError {
         if (response.statusCode() >= 400) {
@@ -193,59 +299,130 @@ public class CzamLoginClientService {
         return Integer.parseInt(digitString);
     }
 
-    private String createSubmissionId() {
-        /**
-         * In czam page code:
-         * $('<input>').attr({
-         *                 type: 'hidden',
-         *                 name: 'submissionToken',
-         *                 value: (Math.random()*1e32).toString(36)
-         *             }).appendTo(form);
-         *             produces 6fh1ighon1c0000000000
-         */
-
-        String intString = BigDecimal.valueOf(Math.random() * Math.pow(10, 32))
-                .toBigInteger()
-                .toString(36);
-        while (intString.length() < 21) {
-            intString = intString + "0";
-        }
-        return intString;
-    }
-
-
     private String findCode(int codeNumber, Map<Integer, String> tokenCodes) throws CestzamClientError {
         return Optional.ofNullable(tokenCodes.get(codeNumber))
                 .orElseThrow(() -> new CestzamClientError("Could not find token code number " + codeNumber));
     }
 
+    private Optional<String> getApiVersionSupportedVersionsOptional(HttpResponse<String> apiVersionResponse) {
+        String apiVersionJson = apiVersionResponse.body();
+        JsonReader jsonReader = Json.createReader(new StringReader(apiVersionJson));
+        String apiVersion = ((JsonString) jsonReader.readValue()).getString();
 
-    @Deprecated // This workaround does not seem to be used anymore (2021-05-18)
-    private void createIAALangCookie(CookieManager cookieManager) {
-        // A request seems to be made with this non-http-only  cookie, set from js:
-        /*
-         * this can't be in the *.js file because
-         * it is specific for each page
-         * and we need to access the currentLanguage response attribute using Thymeleaf
-         *
-         *  var lang = new Lang();
-        var ROOT_CONTEXT = "/fasui/";
-        lang.init({
-                defaultLang: 'default',
-                currentLang: 'FR',
-                cookie: {
-            name: 'IAA-lang',
-                    expiry: 3650,
-                    domain: '.iamfas.belgium.be'
-        },
-        allowCookieOverride: false
-        });
-         */
-        HttpCookie cookie = new HttpCookie("IAA-lang", "FR");
-        cookie.setDomain(".iamfas.belgium.be");
-        cookie.setPath("/");
-        cookie.setMaxAge(3650);
-        CookieStore cookieStore = cookieManager.getCookieStore();
-        cookieStore.add(null, cookie);
+        return CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES.stream()
+                .filter(versionPrefix -> {
+                    Matcher matcher = java.util.regex.Pattern.compile("^" + versionPrefix + "\\..*$").matcher(apiVersion);
+                    return matcher.matches();
+                })
+                .findAny();
     }
+
+    private String fetchCzamApiVersion(HttpClient client, String debugTag) throws CestzamClientError {
+        // Fetch the api version
+        HttpResponse<String> apiVersionResponse = cestzamRequestService.getJson(debugTag, client, CZAM_ORIGIN, "/fasui/api/version");
+        checkNoError(apiVersionResponse);
+        String supportedApiVersion = getApiVersionSupportedVersionsOptional(apiVersionResponse)
+                .orElseThrow(() -> new CestzamClientError("Unsupported fasui api version: " + apiVersionResponse.body()));
+        return supportedApiVersion;
+    }
+
+    private String initCzamSinglePageApp(CestzamLoginContext loginContext, String debugTag, HttpClient client, CookieManager cookieManager) throws CestzamClientError {
+        // 2022-01: Single-page app now.
+        URI loginUri = loginContext.getLoginUri();
+        String spEntityID = cestzamResponseService.parseURIParamsGroup1(loginUri, ".*spEntityID=([^&]*).*")
+                .orElseThrow((() -> new CestzamClientError("Expected a spEntityID query param")));
+        String service = cestzamResponseService.parseURIParamsGroup1(loginUri, ".*service=([^&]*).*")
+                .orElseThrow((() -> new CestzamClientError("Expected a service query param")));
+        String gotoValue = parseGotoValueFromLoginUro(loginUri);
+
+        URI gotoValueUri = URI.create(gotoValue);
+        String secondVisitUrlString = cestzamResponseService.parseURIParamsGroup1(gotoValueUri, ".*secondVisitUrl=([^&]*).*")
+                .orElseThrow((() -> new CestzamClientError("Expected a secondVisitUrl query param")));
+        String requestId = parseRequestIdFromSecondVisitUrl(secondVisitUrlString);
+
+        // Just navigate to the app
+        HttpResponse<String> loginResponse = cestzamRequestService.getHtml(debugTag, client, loginUri);
+
+        // Set cookies. This is done in application code apparently
+        URI cookieURI = URI.create(CZAM_ORIGIN);
+        try {
+            cookieManager.put(cookieURI, Map.of(
+                    "Set-Cookie", List.of(
+                            "i18next=fr; path=/fasui;Domain=.iamfas.belgium.be;Secure",
+                            "auth-protocol=SAML; path=/fasui;Domain=.iamfas.belgium.be;Secure",
+                            "request-id=" + requestId + "; path=/fasui;Domain=.iamfas.belgium.be;Secure",
+                            "goto-url=" + gotoValueUri.toASCIIString() + "; path=/fasui;Domain=.iamfas.belgium.be;Secure"
+                    )
+            ));
+        } catch (IOException e) {
+            throw new CestzamClientError("Unable to set fasui cookies: " + e.getMessage());
+        }
+
+        // This post is probably not required, but may be useful as it returns the available auth methods
+        // TODO: specific method & checks whether services is available
+        // bmid = itsme
+        // citizentokenservice = token codes
+        HttpResponse<String> requestIdResponse = cestzamRequestService.postJsonGetJson(debugTag, client, Map.of(), null, CZAM_ORIGIN, "/fasui/api", requestId);
+        checkNoError(requestIdResponse);
+        //  {"authMeanMap":{"eid_group":["eidservice","bmid"],"twofactor_group":["mailotpservice","totpservice"],"token_group":["citizentokenservice"],"european_group":["eidasservice"]},"keyCount":6,"serviceMessage":null,"language":"fr","customLogos":null}
+
+        return requestId;
+    }
+
+    private String parseGotoValueFromLoginUro(URI loginUri) throws CestzamClientError {
+        String gotoValue = cestzamResponseService.parseURIParamsGroup1(loginUri, ".*goto=([^&]*).*")
+                .orElseThrow((() -> new CestzamClientError("Expected a goto query param")));
+        return gotoValue;
+    }
+
+    private String parseRequestIdFromSecondVisitUrl(String secondVisitUrlString) throws CestzamClientError {
+        URI secondVisitUri = URI.create(secondVisitUrlString);
+        String requestId = cestzamResponseService.parseURIParamsGroup1(secondVisitUri, ".*ReqID=([^&]*).*")
+                .orElseThrow((() -> new CestzamClientError("Expected a ReqID query param")));
+        return requestId;
+    }
+
+
+    private void setCzamCapacity(HttpClient client, String debugTag, String requestId, String tokenId, String service, CzamCapacity czamCapacity) throws CestzamClientError {
+        boolean capacityRequired;
+        boolean capacitySet;
+        {
+            String capacityCheckPayload = Json.createObjectBuilder(Map.of(
+                    "tokenId", tokenId,
+                    "service", service,
+                    "requestId", requestId,
+                    "capacity", ""
+            )).build().toString();
+            HttpResponse<String> capacityCheckResponse = cestzamRequestService.postJsonGetJson(debugTag, client, capacityCheckPayload, CZAM_ORIGIN, "fasui/api/capacity/_check");
+            checkNoError(capacityCheckResponse);
+            // {
+            //    "capacityRequired": true,
+            //    "capacitySet": false
+            //}
+            JsonReader capacityCheckReader = Json.createReader(new StringReader(capacityCheckResponse.body()));
+            JsonObject capacityCheckResponseObject = capacityCheckReader.readObject();
+            capacityRequired = capacityCheckResponseObject.getBoolean("capacityRequired");
+            capacitySet = capacityCheckResponseObject.getBoolean("capacitySet");
+        }
+
+        if (capacityRequired && !capacitySet) {
+            String capacityPayload = Json.createObjectBuilder(Map.of(
+                    "tokenId", tokenId,
+                    "service", service,
+                    "requestId", requestId,
+                    "capacity", czamCapacity.getName()
+            )).build().toString();
+            HttpResponse<String> capacityResponse = cestzamRequestService.postJsonGetJson(debugTag, client, capacityPayload, CZAM_ORIGIN, "fasui/api/capacity");
+            checkNoError(capacityResponse);
+            JsonReader capacityCheckReader = Json.createReader(new StringReader(capacityResponse.body()));
+            JsonObject capacityCheckResponseObject = capacityCheckReader.readObject();
+            capacityRequired = capacityCheckResponseObject.getBoolean("capacityRequired");
+            capacitySet = capacityCheckResponseObject.getBoolean("capacitySet");
+        }
+
+        if (capacityRequired || !capacitySet) {
+            throw new CestzamClientError("Unable to set capacity");
+        }
+    }
+
 }
