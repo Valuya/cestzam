@@ -1,0 +1,9 @@
+POST {{ws-uri}}/cestzam/service/myminfin/vatbalance/current
+Accept: application/json
+Content-Type: application/json
+
+{
+"myminfinContext": {
+  "cestzamContext": "{{cestzamContext}}"
+  }
+}
