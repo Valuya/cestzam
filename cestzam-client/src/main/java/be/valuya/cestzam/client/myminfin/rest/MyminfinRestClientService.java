@@ -15,7 +15,7 @@ import java.net.http.HttpResponse;
 @ApplicationScoped
 public class MyminfinRestClientService {
 
-    private static final String REST_URL = "https://eservices.minfin.fgov.be/myminfin-rest/myminfin";
+    private static final String REST_URL = "https://eservices.minfin.fgov.be/myminfin-rest/myminfin/public";
 
     @Inject
     private CestzamClientService cestzamClientService;
