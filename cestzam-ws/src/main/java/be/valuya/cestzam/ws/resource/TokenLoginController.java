@@ -87,9 +87,12 @@ public class TokenLoginController implements TokenLoginResource {
         String tokenRequested = cestzamContext.getTokenRequested();
         String saml2RequestToken = cestzamContext.getSaml2RequestToken();
         String secondVisitUrl = cestzamContext.getSecondVisitUrl();
+        String apiVersion = cestzamContext.getApiVersion();
+        Boolean apiVersionSupported = cestzamContext.getApiVersionSupported();
 
         try {
-            CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = loginClientService.completeTokenLoginFlow(cookies, czamCapacity,
+            CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = loginClientService.completeTokenLoginFlow(cookies,
+                    apiVersion, apiVersionSupported, czamCapacity,
                     requestId, tokenRequested, tokenAuthId, tokenVerificationCode, saml2RequestToken, secondVisitUrl);
             CestzamCookies cookies2 = cestzamAuthenticatedSamlResponse.getCookies();
             String relayState = cestzamAuthenticatedSamlResponse.getRelayState();
@@ -120,7 +123,9 @@ public class TokenLoginController implements TokenLoginResource {
         CestzamCookies cookies = cestzamContext.getCookies();
         String saml2RequestToken = cestzamContext.getSaml2RequestToken();
         String secondVisitUrl = cestzamContext.getSecondVisitUrl();
-        CestzamLoginContext loginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, cookies);
+        String apiVersion = cestzamContext.getApiVersion();
+        Boolean apiVersionSupported = cestzamContext.getApiVersionSupported();
+        CestzamLoginContext loginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, apiVersion, apiVersionSupported, cookies);
 
         try {
             CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = loginClientService.doTokenLogin(loginContext, czamCapacity, login, password, codes);

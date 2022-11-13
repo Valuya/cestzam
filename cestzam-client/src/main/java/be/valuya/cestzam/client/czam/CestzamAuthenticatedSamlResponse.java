@@ -12,6 +12,8 @@ import java.util.Optional;
 @AllArgsConstructor
 public class CestzamAuthenticatedSamlResponse implements CestzamSamlResponse {
     private CestzamCookies cookies;
+    private String apiVersion;
+    private Boolean apiVersionSupported;
     private String samlResponse;
     private String relayState;
     private Optional<String> serviceRedirectUrl;

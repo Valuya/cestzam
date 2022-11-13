@@ -10,6 +10,8 @@ import lombok.Setter;
 @AllArgsConstructor
 public class CestzamTokenVerificationResponse {
     private CestzamCookies cookies;
+    private String czamApiVersion;
+    private boolean czamApiVersionSupported;
     private String czamRequestId;
     private String codeLabel;
     private int codeNumber;

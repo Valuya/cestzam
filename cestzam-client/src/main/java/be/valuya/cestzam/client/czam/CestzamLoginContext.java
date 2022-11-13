@@ -14,5 +14,7 @@ public class CestzamLoginContext {
     private URI loginUri;
     private String saml2RequestToken;
     private String secondVisitUrl;
+    private String apiVersion;
+    private Boolean apiVersionSupported;
     private CestzamCookies cestzamCookies;
 }
