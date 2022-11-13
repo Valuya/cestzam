@@ -34,7 +34,7 @@ pipeline {
                       if (params.SKIP_TESTS) {
                           env.MVN_ARGS = "${env.MVN_ARGS} -DskipTests=true"
                       }
-                      if (env.BRANCH_NAME == "master" || env.BRANCH_NAME == "rc" || params.FORCE_DEPLOY == true) {
+                      if (env.BRANCH_NAME == "master" || env.BRANCH_NAME == "dev" || params.FORCE_DEPLOY == true) {
                           env.MVN_GOALS = "clean deploy"
                           env.MVN_ARGS = "${env.MVN_ARGS} -Possrh-deploy"
                           env.DO_DEPLOY = true
