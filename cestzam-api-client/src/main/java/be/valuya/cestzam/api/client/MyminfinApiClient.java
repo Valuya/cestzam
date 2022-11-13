@@ -28,6 +28,9 @@ import be.valuya.cestzam.api.service.myminfin.mandate.MyminfinMandateType;
 import be.valuya.cestzam.api.service.myminfin.user.MyminfinUser;
 import be.valuya.cestzam.api.service.myminfin.user.MyminfinUserResource;
 import be.valuya.cestzam.api.service.myminfin.user.MyminfinUserType;
+import be.valuya.cestzam.api.service.myminfin.vatbalance.MyMininVatBalanceResource;
+import be.valuya.cestzam.api.service.myminfin.vatbalance.MyminfinCurrentVatBalance;
+import be.valuya.cestzam.api.service.myminfin.vatbalance.MyminfinVatBalanceSearch;
 import be.valuya.cestzam.api.util.ResultPage;
 
 import javax.validation.Valid;
@@ -44,6 +47,7 @@ public class MyminfinApiClient implements AutoCloseable {
     private final MyminfinUserResource userResource;
     private final MyminfinMandateResource mandateResource;
     private final MyminfinDocumentsResource documentsResource;
+    private final MyMininVatBalanceResource vatBalanceResource;
     private final TokenLoginResource tokenLoginResource;
     private final CestzamApiClient cestzamApiClient;
     private final MyminfinHealthResource healthResource;
@@ -62,8 +66,21 @@ public class MyminfinApiClient implements AutoCloseable {
                 .build(MyminfinMandateResource.class);
         documentsResource = cestzamApiClient.getClientBuilder()
                 .build(MyminfinDocumentsResource.class);
+        vatBalanceResource = cestzamApiClient.getClientBuilder()
+                .build(MyMininVatBalanceResource.class);
         healthResource = cestzamApiClient.getClientBuilder()
                 .build(MyminfinHealthResource.class);
+    }
+
+    @Override
+    public void close() throws Exception {
+        loginResource.close();
+        userResource.close();
+        mandateResource.close();
+        documentsResource.close();
+        vatBalanceResource.close();
+        tokenLoginResource.close();
+        healthResource.close();
     }
 
     public ServiceHealthCheckResponse checkHealth() {
@@ -240,6 +257,12 @@ public class MyminfinApiClient implements AutoCloseable {
         return myminfinDocumentStream;
     }
 
+    public MyminfinCurrentVatBalance getCurrentVatBalance() {
+        MyminfinVatBalanceSearch vatBalanceSearch = new MyminfinVatBalanceSearch();
+        vatBalanceSearch.setMyminfinContext(getAuthenticatedContext());
+        return vatBalanceResource.getCurrentVatBalance(vatBalanceSearch);
+    }
+
     private boolean isDocumentIncluded(MyminfinDocument doc, MyminfinDocumentFilter documentFilter) {
         LocalDate documentDate = doc.getDocumentDate();
         Integer documentYear = doc.getDocumentYear();
@@ -255,17 +278,6 @@ public class MyminfinApiClient implements AutoCloseable {
                 .orElse(true);
 
         return fromDatePredicate && toDatePredicate && documentYearPredicate;
-    }
-
-
-    @Override
-    public void close() throws Exception {
-        loginResource.close();
-        userResource.close();
-        mandateResource.close();
-        documentsResource.close();
-        tokenLoginResource.close();
-        healthResource.close();
     }
 
 

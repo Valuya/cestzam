@@ -40,4 +40,7 @@ public class GenericCestzamContext {
     private String ssin;
     private String lastNames;
     private String firstNames;
+
+    private String apiVersion;
+    private Boolean apiVersionSupported;
 }

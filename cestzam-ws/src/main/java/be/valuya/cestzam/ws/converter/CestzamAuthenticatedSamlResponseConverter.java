@@ -14,8 +14,11 @@ public class CestzamAuthenticatedSamlResponseConverter {
         String relayState = cestzamContext.getRelayState();
         String samlResponse = cestzamContext.getSamlResponse();
         String serviceRedirectUrl = cestzamContext.getServiceRedirectUrl();
+        String apiVersion = cestzamContext.getApiVersion();
+        Boolean apiVersionSupported = cestzamContext.getApiVersionSupported();
 
-        CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = new CestzamAuthenticatedSamlResponse(cookies, samlResponse, relayState,
+        CestzamAuthenticatedSamlResponse cestzamAuthenticatedSamlResponse = new CestzamAuthenticatedSamlResponse(cookies, apiVersion, apiVersionSupported,
+                samlResponse, relayState,
                 Optional.ofNullable(serviceRedirectUrl));
         return cestzamAuthenticatedSamlResponse;
     }

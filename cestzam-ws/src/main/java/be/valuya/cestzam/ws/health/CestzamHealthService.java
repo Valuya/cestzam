@@ -13,10 +13,12 @@ import be.valuya.cestzam.client.myminfin.CestzamAuthenticatedMyminfinContext;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinCustomerRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinDocumentsRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinRestClientService;
+import be.valuya.cestzam.client.myminfin.rest.MyminfinVatBalanceClientService;
 import be.valuya.cestzam.client.myminfin.rest.UserData;
 import be.valuya.cestzam.client.myminfin.rest.documents.DocumentProviderGroup;
 import be.valuya.cestzam.client.myminfin.rest.documents.DocumentProvidersResponse;
 import be.valuya.cestzam.client.myminfin.rest.mandate.ApplicationMandate;
+import be.valuya.cestzam.client.myminfin.rest.vatbalance.CurrentVatBalance;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -71,6 +73,8 @@ public class CestzamHealthService {
     private MyminfinCustomerRestClientService myminfinCustomerRestClientService;
     @Inject
     private MyminfinRestClientService myminfinRestClientService;
+    @Inject
+    private MyminfinVatBalanceClientService myminfinVatBalanceClientService;
 
     public ServiceHealthCheckResponse checkMyminfinHealth() {
         if (!this.healthChecksEnabled) {
@@ -109,8 +113,9 @@ public class CestzamHealthService {
             ServiceHealthCheck myminfinProvidersCheck = checkMyminfinProviders(authenticatedMyminfinContext);
             ServiceHealthCheck citizenMandatesCheck = checkMyminfinCitizenMandates(authenticatedMyminfinContext);
             ServiceHealthCheck enterpriseMandateCheck = checkMyminfinEnterpriseMandates(authenticatedMyminfinContext);
+            ServiceHealthCheck vatBalanceCheck = checkMyminfinVatBalance(authenticatedMyminfinContext);
             return createHealthCheckResponse(MYMINFIN_SERVICE_NAME, List.of(
-                    czamUserCheck, myminfinUserCheck, myminfinProvidersCheck, citizenMandatesCheck, enterpriseMandateCheck
+                    czamUserCheck, myminfinUserCheck, myminfinProvidersCheck, citizenMandatesCheck, enterpriseMandateCheck, vatBalanceCheck
             ));
         } catch (CestzamClientError cestzamClientError) {
             return createHealthErrorResponse(MYMINFIN_SERVICE_NAME, cestzamClientError.getMessage());
@@ -173,6 +178,17 @@ public class CestzamHealthService {
             List<ApplicationMandate> enterpriseMandates = myminfinCustomerRestClientService.getEnterpriseMandates(authenticatedMyminfinContext);
             int entrepriseMandateCount = enterpriseMandates.size();
             ServiceHealthCheck entrepriseMandateCheck = new ServiceHealthCheck(checkName, true, "" + entrepriseMandateCount);
+            return entrepriseMandateCheck;
+        } catch (CestzamClientError cestzamClientError) {
+            return createHealthCheckError(checkName, cestzamClientError);
+        }
+    }
+
+    private ServiceHealthCheck checkMyminfinVatBalance(CestzamAuthenticatedMyminfinContext authenticatedMyminfinContext) {
+        String checkName = "myminfin.vatBalance";
+        try {
+            CurrentVatBalance currentVatBalance = myminfinVatBalanceClientService.getCurrentVatBalance(authenticatedMyminfinContext);
+            ServiceHealthCheck entrepriseMandateCheck = new ServiceHealthCheck(checkName, true, currentVatBalance.getCurrentPeriod() + " " + currentVatBalance.getCurrentDueAmount());
             return entrepriseMandateCheck;
         } catch (CestzamClientError cestzamClientError) {
             return createHealthCheckError(checkName, cestzamClientError);

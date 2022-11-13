@@ -15,7 +15,9 @@ public class CestzamLoginContextConverter {
         CestzamCookies cookies = cestzamContext.getCookies();
         String saml2RequestToken = cestzamContext.getSaml2RequestToken();
         String secondVisitUrl = cestzamContext.getSecondVisitUrl();
-        CestzamLoginContext loginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, cookies);
+        String apiVersion = cestzamContext.getApiVersion();
+        Boolean apiVersionSupported = cestzamContext.getApiVersionSupported();
+        CestzamLoginContext loginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, apiVersion, apiVersionSupported, cookies);
         return loginContext;
     }
 }

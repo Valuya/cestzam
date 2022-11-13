@@ -7,7 +7,6 @@ import be.valuya.cestzam.client.error.CzamSessionTimeoutError;
 import be.valuya.cestzam.client.error.CestzamClientError;
 import be.valuya.cestzam.client.request.CestzamRequestService;
 import be.valuya.cestzam.client.response.CestzamResponseService;
-import org.intellij.lang.annotations.Pattern;
 import org.jsoup.Jsoup;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -20,10 +19,7 @@ import javax.json.JsonString;
 import javax.json.JsonValue;
 import java.io.IOException;
 import java.io.StringReader;
-import java.math.BigDecimal;
 import java.net.CookieManager;
-import java.net.CookieStore;
-import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
@@ -40,7 +36,8 @@ public class CzamLoginClientService {
     private final static String ITSME_ORIGIN = "https://merchant.itsme.be";
 
     // Supported major api versions for /fasui/api. Used in pattern, so dots will match all chars
-    private final List<String> CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES = List.of(CZAM_API_V19);
+    private final List<String> CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES = List.of(CZAM_API_V19, CZAM_API_V22);
+    public static final String CZAM_API_V22 = "22";
     public static final String CZAM_API_V19 = "19";
 
     @Inject
@@ -61,26 +58,28 @@ public class CzamLoginClientService {
         int codeNumber = cestzamTokenVerificationResponse.getCodeNumber();
         String codeLabel = cestzamTokenVerificationResponse.getCodeLabel();
         String czamRequestId = cestzamTokenVerificationResponse.getCzamRequestId();
+        String czamApiVersion = cestzamTokenVerificationResponse.getCzamApiVersion();
+        boolean czamApiVersionSupported = cestzamTokenVerificationResponse.isCzamApiVersionSupported();
         String authId = cestzamTokenVerificationResponse.getAuthId();
 
         String verificationCode = findCode(codeNumber, tokenCodes);
 
-        return completeTokenLoginFlow(updatedCookies, czamCapacity, czamRequestId, codeLabel, authId, verificationCode,
+        return completeTokenLoginFlow(updatedCookies, czamApiVersion, czamApiVersionSupported,
+                czamCapacity, czamRequestId, codeLabel, authId, verificationCode,
                 loginContext.getSaml2RequestToken(), loginContext.getSecondVisitUrl());
     }
 
 
-    public CestzamTokenVerificationResponse startTokenLoginFlow(CestzamLoginContext loginContext, String login, String password) throws CestzamClientError {
+    public CestzamTokenVerificationResponse startTokenLoginFlow(CestzamLoginContext loginContext,
+                                                                String login, String password) throws CestzamClientError {
         HttpClient client = cestzamClientService.createFollowRedirectClient(loginContext.getCestzamCookies());
         String debugTag = cestzamDebugService.createFlowDebugTag("czam", "startTokenLogin", login);
         CookieManager cookieManager = (CookieManager) client.cookieHandler()
                 .orElseThrow(IllegalStateException::new);
 
         String requestId = initCzamSinglePageApp(loginContext, debugTag, client, cookieManager);
-
-        // Assume V19 for now: apiVersion.equals(V19)
         String apiVersion = fetchCzamApiVersion(client, debugTag);
-
+        boolean apiVersionSupported = isSupportedApiVersion(apiVersion);
 
         // Post username-password
         String loginpasswordPayload = Json.createObjectBuilder(Map.of(
@@ -110,11 +109,13 @@ public class CzamLoginClientService {
         }
         int tokenInt = parseTokenInt(tokenRequestedValue);
         CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-        return new CestzamTokenVerificationResponse(updatedCookies, requestId, tokenRequestedValue, tokenInt, authIdToken,
+        return new CestzamTokenVerificationResponse(updatedCookies, apiVersion, apiVersionSupported,
+                requestId, tokenRequestedValue, tokenInt, authIdToken,
                 loginContext.getSaml2RequestToken(), loginContext.getSecondVisitUrl());
     }
 
-    public CestzamAuthenticatedSamlResponse completeTokenLoginFlow(CestzamCookies cookies, CzamCapacity czamCapacity, String requestId,
+    public CestzamAuthenticatedSamlResponse completeTokenLoginFlow(CestzamCookies cookies,
+                                                                   String czamApiVersion, boolean czamApiVersionSupported, CzamCapacity czamCapacity, String requestId,
                                                                    String requestedToken, String authId, String requestedTokenValue,
                                                                    String saml2RequestToken, String secondVisitUrl) throws CestzamClientError {
         HttpClient client = cestzamClientService.createNoRedirectClient(cookies);
@@ -160,12 +161,14 @@ public class CzamLoginClientService {
             }
         }
 
-        return completeCzamPostAuthenticationFlow(client, requestId, tokenIdValue, "citizentokenservice",
+        return completeCzamPostAuthenticationFlow(client, czamApiVersion, czamApiVersionSupported,
+                requestId, tokenIdValue, "citizentokenservice",
                 gotoUrl, postAuthenticationSteps,
                 czamCapacity, saml2RequestToken, secondVisitUrl);
     }
 
-    private CestzamAuthenticatedSamlResponse completeCzamPostAuthenticationFlow(HttpClient client, String requestId, String tokenId,
+    private CestzamAuthenticatedSamlResponse completeCzamPostAuthenticationFlow(HttpClient client, String apiVersion, boolean apiVersionSupported,
+                                                                                String requestId, String tokenId,
                                                                                 String service,
                                                                                 String gotoUrl, List<String> postSteps, CzamCapacity czamCapacity,
                                                                                 String saml2RequestToken, String secondVisitUrl) throws CestzamClientError {
@@ -222,7 +225,7 @@ public class CzamLoginClientService {
                     .orElseThrow((() -> new CestzamClientError("Expected form element in dom, none found")));
 
             CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-            return new CestzamAuthenticatedSamlResponse(updatedCookies, samlResponseToken, relayStateToken, Optional.of(formActionUrlString));
+            return new CestzamAuthenticatedSamlResponse(updatedCookies, apiVersion, apiVersionSupported, samlResponseToken, relayStateToken, Optional.of(formActionUrlString));
         }
     }
 
@@ -230,6 +233,8 @@ public class CzamLoginClientService {
                                                                              CestzamLoginContext loginContext,
                                                                              HttpResponse<String> loginResponse) throws CestzamClientError {
         String debugTag = cestzamDebugService.createFlowDebugTag("czam", "postAuthenticationExternal");
+        String apiVersoin = fetchCzamApiVersion(client, debugTag);
+        boolean apiVersionSupported = isSupportedApiVersion(apiVersoin);
 
         String secondVisitUrl = loginContext.getSecondVisitUrl();
         String saml2RequestToken = loginContext.getSaml2RequestToken();
@@ -276,7 +281,7 @@ public class CzamLoginClientService {
                 .orElseThrow((() -> new CestzamClientError("Expected form element in dom, none found")));
 
         CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-        return new CestzamAuthenticatedSamlResponse(updatedCookies, samlResponseToken, relayStateToken, Optional.of(formActionUrlString));
+        return new CestzamAuthenticatedSamlResponse(updatedCookies, samlResponseToken, apiVersionSupported, relayStateToken, relayStateToken, Optional.of(formActionUrlString));
     }
 
     private void checkNoError(HttpResponse<String> response) throws CestzamClientError {
@@ -304,26 +309,27 @@ public class CzamLoginClientService {
                 .orElseThrow(() -> new CestzamClientError("Could not find token code number " + codeNumber));
     }
 
-    private Optional<String> getApiVersionSupportedVersionsOptional(HttpResponse<String> apiVersionResponse) {
+    private String getApiVersion(HttpResponse<String> apiVersionResponse) {
         String apiVersionJson = apiVersionResponse.body();
         JsonReader jsonReader = Json.createReader(new StringReader(apiVersionJson));
         String apiVersion = ((JsonString) jsonReader.readValue()).getString();
+        return apiVersion;
+    }
 
+    private boolean isSupportedApiVersion(String fasuiApiVersionString) {
         return CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES.stream()
-                .filter(versionPrefix -> {
-                    Matcher matcher = java.util.regex.Pattern.compile("^" + versionPrefix + "\\..*$").matcher(apiVersion);
+                .anyMatch(versionPrefix -> {
+                    Matcher matcher = java.util.regex.Pattern.compile("^" + versionPrefix + "\\..*$").matcher(fasuiApiVersionString);
                     return matcher.matches();
-                })
-                .findAny();
+                });
     }
 
     private String fetchCzamApiVersion(HttpClient client, String debugTag) throws CestzamClientError {
         // Fetch the api version
         HttpResponse<String> apiVersionResponse = cestzamRequestService.getJson(debugTag, client, CZAM_ORIGIN, "/fasui/api/version");
         checkNoError(apiVersionResponse);
-        String supportedApiVersion = getApiVersionSupportedVersionsOptional(apiVersionResponse)
-                .orElseThrow(() -> new CestzamClientError("Unsupported fasui api version: " + apiVersionResponse.body()));
-        return supportedApiVersion;
+        String apiVersion = getApiVersion(apiVersionResponse);
+        return apiVersion;
     }
 
     private String initCzamSinglePageApp(CestzamLoginContext loginContext, String debugTag, HttpClient client, CookieManager cookieManager) throws CestzamClientError {

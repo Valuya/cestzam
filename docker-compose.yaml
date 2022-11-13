@@ -22,12 +22,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.sync
+    env_file:
+      - ./runtime/config/cestzam.sync.private.env
     environment:
       - CESTZAM_TARGET_PATH=/fs
       - CESTZAM_API_URI=http://cestzam-ws:8080
-      - CESTZAM_AUTH_LOGIN=
-      - CESTZAM_AUTH_PASSWORD=
-      - 'CESTZAM_AUTH_TOKENS_JSON={"1":"AAAAAA","2":"BBBBBB"...}'
+#      - CESTZAM_AUTH_LOGIN=
+#      - CESTZAM_AUTH_PASSWORD=
+#      - 'CESTZAM_AUTH_TOKENS_JSON={"1":"AAAAAA","2":"BBBBBB"...}'
       # Only process a single mandator, by ssin (national number)
 #      - CESTZAM_MANDATOR_SINGLE_SSIN=
       # Only process mandators whom fullname matches pattern

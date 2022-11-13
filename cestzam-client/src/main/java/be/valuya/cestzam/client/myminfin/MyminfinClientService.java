@@ -95,7 +95,7 @@ public class MyminfinClientService {
         }
 
         CestzamCookies updatedCookies = cestzamClientService.extractCookies(client);
-        CestzamLoginContext cestzamLoginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, updatedCookies);
+        CestzamLoginContext cestzamLoginContext = new CestzamLoginContext(loginUri, saml2RequestToken, secondVisitUrl, null, null, updatedCookies);
         return cestzamLoginContext;
     }
 
@@ -126,6 +126,7 @@ public class MyminfinClientService {
                 .orElseGet(() -> URI.create(FEDIAM_MYMINFIN_ORIGIN + "/sso/Consumer/metaAlias/external/sp"));
 
         HttpResponse<String> loginResponse = cestzamRequestService.postFormUrlEncodedAcceptHtml(debugTag, client, fediamFormParm, completeURI.toASCIIString());
+        loginResponse = cestzamRequestService.followRedirects(debugTag, client, loginResponse);
         cestzamResponseService.assertSuccessStatusCode(loginResponse);
         URI responseUri = loginResponse.uri();
 
