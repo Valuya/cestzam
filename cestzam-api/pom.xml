@@ -5,7 +5,7 @@
     <parent>
         <groupId>be.valuya.cestzam</groupId>
         <artifactId>cestzam-parent</artifactId>
-        <version>2022.1.2-SNAPSHOT</version>
+        <version>2023.1.1</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
