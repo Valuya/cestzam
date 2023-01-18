@@ -88,7 +88,8 @@ public class CzamLoginClientService {
                 "token", "",
                 "tokenRequested", ""
         )).build().toString();
-        HttpResponse<String> usernamePasswordResponse = cestzamRequestService.postJsonGetJson(debugTag, client, loginpasswordPayload, CZAM_ORIGIN, "/fasui/api/login/citizentokenservice/username-password", requestId);
+        // 2023-01: api v 22.2.0-RC69: no more request id in path
+        HttpResponse<String> usernamePasswordResponse = cestzamRequestService.postJsonGetJson(debugTag, client, loginpasswordPayload, CZAM_ORIGIN, "/fasui/api/login/citizentokenservice/username-password");
         checkNoError(usernamePasswordResponse);
 
         String tokenRequestedValue;
@@ -130,9 +131,10 @@ public class CzamLoginClientService {
                     "tokenRequested", requestedToken
             )).build().toString();
 
+            // 2023-01, api v 22.2.0-RC69: no more requestId in path
             HttpResponse<String> usernamePasswordResponse = cestzamRequestService.postJsonGetJson(debugTag, client,
                     Map.of("auth-id", authId),
-                    requestedTokenValuePayload, CZAM_ORIGIN, "/fasui/api/login/citizentokenservice/token", requestId);
+                    requestedTokenValuePayload, CZAM_ORIGIN, "/fasui/api/login/citizentokenservice/token");
             checkNoError(usernamePasswordResponse);
             //  {"authId":null,"tokenId":"GCm10xCIEXlz_ukpfH1MAslhZt0.*AAJTSQACMDIAAlNLABxNN201ZzAxMU91bnBYbFV3T2dWSXJBSVVTc3c9AAR0eXBlAANDVFMAAlMxAAIwMQ..*","postAuthenticationSteps":[],"gotoUrl":null}
             JsonReader usernameResponseReader = Json.createReader(new StringReader(usernamePasswordResponse.body()));
@@ -179,7 +181,8 @@ public class CzamLoginClientService {
         }
 
         {
-            URI postAuthUri = cestzamRequestService.createUri(CZAM_ORIGIN, "/fasui/api/post-authentication", requestId);
+            // 2023-01: 22.2.0-RC69: no more requestId in path (replaced with 'complete' here).
+            URI postAuthUri = cestzamRequestService.createUri(CZAM_ORIGIN, "/fasui/api/post-authentication/complete");
             HttpResponse<String> postAuthResponse = cestzamRequestService.getJson(debugTag, client,
                     Map.of("token-id", tokenId), postAuthUri
             );
@@ -368,9 +371,10 @@ public class CzamLoginClientService {
         // TODO: specific method & checks whether services is available
         // bmid = itsme
         // citizentokenservice = token codes
-        HttpResponse<String> requestIdResponse = cestzamRequestService.postJsonGetJson(debugTag, client, Map.of(), null, CZAM_ORIGIN, "/fasui/api", requestId);
+        // 2023-01: api Updated, no more requestId in path. api version 22.2.0-RC69
+        HttpResponse<String> requestIdResponse = cestzamRequestService.getJson(debugTag, client, CZAM_ORIGIN, "/fasui/api/authInfo");
         checkNoError(requestIdResponse);
-        //  {"authMeanMap":{"eid_group":["eidservice","bmid"],"twofactor_group":["mailotpservice","totpservice"],"token_group":["citizentokenservice"],"european_group":["eidasservice"]},"keyCount":6,"serviceMessage":null,"language":"fr","customLogos":null}
+        //  {"authMeanMap":{"eid_group":["eidservice","bmid"],"twofactor_group":["mailotpservice","totpservice","otpservice"],"token_group":["citizentokenservice"],"european_group":["eidasservice"]},"keyCount":7,"serviceMessage":null,"language":null,"customLogos":{"de":" ... }}
 
         return requestId;
     }

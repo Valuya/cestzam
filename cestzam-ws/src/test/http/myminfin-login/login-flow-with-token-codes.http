@@ -5,6 +5,7 @@ Accept: application/json
 Content-Type: application/json
 
 > {%
+ client.assert(response.status === 200, 'success');
  client.global.set("cestzamContext", response.body.cestzamContext);
 %}
 
@@ -24,6 +25,7 @@ Accept: application/json
 
 
 > {%
+ client.assert(response.status === 200, 'success');
  client.global.set("cestzamContext", response.body.cestzamContext);
 %}
 
@@ -39,5 +41,6 @@ Content-Type: application/json
 }
 
 > {%
+ client.assert(response.status === 200, 'success');
  client.global.set("cestzamContext", response.body.cestzamContext);
 %}
