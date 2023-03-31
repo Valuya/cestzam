@@ -3,8 +3,8 @@ package be.valuya.cestzam.client.czam;
 import be.valuya.cestzam.client.CestzamClientService;
 import be.valuya.cestzam.client.cookie.CestzamCookies;
 import be.valuya.cestzam.client.debug.CestzamDebugService;
-import be.valuya.cestzam.client.error.CzamSessionTimeoutError;
 import be.valuya.cestzam.client.error.CestzamClientError;
+import be.valuya.cestzam.client.error.CzamSessionTimeoutError;
 import be.valuya.cestzam.client.request.CestzamRequestService;
 import be.valuya.cestzam.client.response.CestzamResponseService;
 import org.jsoup.Jsoup;
@@ -36,9 +36,10 @@ public class CzamLoginClientService {
     private final static String ITSME_ORIGIN = "https://merchant.itsme.be";
 
     // Supported major api versions for /fasui/api. Used in pattern, so dots will match all chars
-    private final List<String> CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES = List.of(CZAM_API_V19, CZAM_API_V22);
-    public static final String CZAM_API_V22 = "22";
+    private final List<String> CZAM_API_VERSION_SUPPORTED_VERSIONS_PREFIXES = List.of(CZAM_API_V19, CZAM_API_V22, CZAM_API_V23);
     public static final String CZAM_API_V19 = "19";
+    public static final String CZAM_API_V22 = "22";
+    public static final String CZAM_API_V23 = "23";
 
     @Inject
     private CestzamClientService cestzamClientService;
