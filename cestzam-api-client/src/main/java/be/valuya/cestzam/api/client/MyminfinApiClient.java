@@ -25,6 +25,12 @@ import be.valuya.cestzam.api.service.myminfin.mandate.MyMinfinMandate;
 import be.valuya.cestzam.api.service.myminfin.mandate.MyminfinMandateResource;
 import be.valuya.cestzam.api.service.myminfin.mandate.MyminfinMandateSearch;
 import be.valuya.cestzam.api.service.myminfin.mandate.MyminfinMandateType;
+import be.valuya.cestzam.api.service.myminfin.ubo.MyminfinUboResource;
+import be.valuya.cestzam.api.service.myminfin.ubo.UboCompany;
+import be.valuya.cestzam.api.service.myminfin.ubo.UboCompanyCompositionNode;
+import be.valuya.cestzam.api.service.myminfin.ubo.UboCompanySearch;
+import be.valuya.cestzam.api.service.myminfin.ubo.UboCompanySearchResult;
+import be.valuya.cestzam.api.service.myminfin.ubo.UboRequestContext;
 import be.valuya.cestzam.api.service.myminfin.user.MyminfinUser;
 import be.valuya.cestzam.api.service.myminfin.user.MyminfinUserResource;
 import be.valuya.cestzam.api.service.myminfin.user.MyminfinUserType;
@@ -48,6 +54,7 @@ public class MyminfinApiClient implements AutoCloseable {
     private final MyminfinMandateResource mandateResource;
     private final MyminfinDocumentsResource documentsResource;
     private final MyMininVatBalanceResource vatBalanceResource;
+    private final MyminfinUboResource uboResource;
     private final TokenLoginResource tokenLoginResource;
     private final CestzamApiClient cestzamApiClient;
     private final MyminfinHealthResource healthResource;
@@ -68,6 +75,8 @@ public class MyminfinApiClient implements AutoCloseable {
                 .build(MyminfinDocumentsResource.class);
         vatBalanceResource = cestzamApiClient.getClientBuilder()
                 .build(MyMininVatBalanceResource.class);
+        uboResource = cestzamApiClient.getClientBuilder()
+                .build(MyminfinUboResource.class);
         healthResource = cestzamApiClient.getClientBuilder()
                 .build(MyminfinHealthResource.class);
     }
@@ -79,6 +88,7 @@ public class MyminfinApiClient implements AutoCloseable {
         mandateResource.close();
         documentsResource.close();
         vatBalanceResource.close();
+        uboResource.close();
         tokenLoginResource.close();
         healthResource.close();
     }
@@ -261,6 +271,44 @@ public class MyminfinApiClient implements AutoCloseable {
         MyminfinVatBalanceSearch vatBalanceSearch = new MyminfinVatBalanceSearch();
         vatBalanceSearch.setMyminfinContext(getAuthenticatedContext());
         return vatBalanceResource.getCurrentVatBalance(vatBalanceSearch);
+    }
+
+    public UboCompanySearchResult searchUboCompanies() {
+        return searchUboCompanies(1, 20, Optional.empty(), Optional.empty());
+    }
+
+    public UboCompanySearchResult searchUboCompanies(int page, int limit,
+                                                     Optional<String> identificationNumberOptional,
+                                                     Optional<String> nameOptional) {
+        UboCompanySearch uboCompanySearch = new UboCompanySearch();
+        uboCompanySearch.setMyminfinContext(getAuthenticatedContext());
+        uboCompanySearch.setPage(page);
+        uboCompanySearch.setLimit(limit);
+        identificationNumberOptional.ifPresent(uboCompanySearch::setIdentificationNumber);
+        nameOptional.ifPresent(uboCompanySearch::setName);
+
+        return uboResource.searchCompanies(uboCompanySearch);
+    }
+
+    public UboCompanyCompositionNode getUboCompanyComposition(String companyId) {
+        UboRequestContext requestContext = new UboRequestContext();
+        requestContext.setMyminfinContext(getAuthenticatedContext());
+
+        return uboResource.getCompanyComposition(companyId, requestContext);
+    }
+
+    public UboCompany confirmUboCompanyComposition(String companyId) {
+        UboRequestContext requestContext = new UboRequestContext();
+        requestContext.setMyminfinContext(getAuthenticatedContext());
+
+        return uboResource.confirmCompanyComposition(companyId, requestContext);
+    }
+
+    public InputStream getUboDocumentContent(Long documentId) {
+        UboRequestContext requestContext = new UboRequestContext();
+        requestContext.setMyminfinContext(getAuthenticatedContext());
+
+        return uboResource.getDocumentContent(documentId, requestContext);
     }
 
     private boolean isDocumentIncluded(MyminfinDocument doc, MyminfinDocumentFilter documentFilter) {

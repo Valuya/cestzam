@@ -62,11 +62,29 @@ public class CestzamRequestService {
         return getJson(debugTag, client, uri);
     }
 
+    public HttpResponse<String> getTextPlain(String debugTag, HttpClient client, String origin, String... parts) {
+        URI uri = createUri(origin, parts);
+        return getTextPlain(debugTag, client, Map.of(), uri);
+    }
+
     public HttpResponse<String> getJson(String debugTag, HttpClient client, URI uri) {
         return getJson(debugTag, client, Map.of(), uri);
     }
 
     public HttpResponse<String> getJson(String debugTag, HttpClient client, Map<String, String> extraHeaders, URI uri) {
+        HttpRequest.Builder requestBuilder = createNewJsonRequestBuilder();
+        extraHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder
+                .GET()
+                .uri(uri)
+                .build();
+        return getResponse(debugTag, client, request,
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                        .orTimeout(requestConfig.getTimeoutSecond(), TimeUnit.SECONDS)
+                        .join());
+    }
+
+    public HttpResponse<String> getTextPlain(String debugTag, HttpClient client, Map<String, String> extraHeaders, URI uri) {
         HttpRequest.Builder requestBuilder = createNewJsonRequestBuilder();
         extraHeaders.forEach(requestBuilder::header);
         HttpRequest request = requestBuilder
@@ -109,6 +127,21 @@ public class CestzamRequestService {
                                                                      String origin, String parts
     ) {
         HttpRequest request = createNewPostFormUrlEncodedHtmlRequest(formData, createUri(origin, parts))
+                .build();
+        HttpResponse<InputStream> response = cestzamDebugService.trace(debugTag, request,
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+                        .orTimeout(requestConfig.getTimeoutSecond(), TimeUnit.SECONDS)
+                        .join());
+        return response;
+    }
+
+    public HttpResponse<InputStream> getSlowStream(String debugTag,
+                                                   HttpClient client,
+                                                   String origin, String... parts
+    ) {
+        HttpRequest request = createNewAnyRequestBuilder()
+                .uri(createUri(origin, parts))
+                .GET()
                 .build();
         HttpResponse<InputStream> response = cestzamDebugService.trace(debugTag, request,
                 () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
@@ -206,6 +239,26 @@ public class CestzamRequestService {
                 .headers("Cache-Control", "no-cache");
     }
 
+    public HttpRequest.Builder createNewTextPlainRequestBuilder() {
+        String clientUserAgent = this.cestzamClientConfig.getClientUserAgent();
+        return HttpRequest.newBuilder()
+                .header("User-Agent", clientUserAgent)
+                .headers("Upgrade-Insecure-Requests", "1")
+                .headers("Accept", "text/plain, */*; q=0.01")
+                .headers("Pragma", "no-cache")
+                .headers("Cache-Control", "no-cache");
+    }
+
+    public HttpRequest.Builder createNewAnyRequestBuilder() {
+        String clientUserAgent = this.cestzamClientConfig.getClientUserAgent();
+        return HttpRequest.newBuilder()
+                .header("User-Agent", clientUserAgent)
+                .headers("Upgrade-Insecure-Requests", "1")
+                .headers("Accept", "*/*")
+                .headers("Pragma", "no-cache")
+                .headers("Cache-Control", "no-cache");
+    }
+
     public HttpRequest.Builder createNewPostFormUrlEncodedHtmlRequest(Map<String, String> formData, URI uri) {
         return createNewHtmlRequestBuilder()
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -249,7 +302,7 @@ public class CestzamRequestService {
         );
     }
 
-    private String encodeBodyFormData(Map<String, String> valueMap) {
+    public String encodeBodyFormData(Map<String, String> valueMap) {
         return valueMap.entrySet()
                 .stream()
                 .map(this::encodeEntry)
