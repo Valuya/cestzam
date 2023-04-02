@@ -7,6 +7,7 @@ import org.jsoup.nodes.Node;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 
+import javax.annotation.PostConstruct;
 import javax.enterprise.context.ApplicationScoped;
 import javax.json.Json;
 import javax.json.JsonObject;
@@ -15,6 +16,7 @@ import javax.json.JsonStructure;
 import javax.json.JsonValue;
 import javax.json.bind.Jsonb;
 import javax.json.bind.JsonbBuilder;
+import javax.json.bind.JsonbConfig;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
@@ -36,6 +38,16 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class CestzamResponseService {
+
+    private Jsonb jsonb;
+
+    @PostConstruct
+    public void init() {
+        JsonbConfig jsonbConfig = new JsonbConfig();
+        jsonb = JsonbBuilder.newBuilder()
+                .withConfig(jsonbConfig)
+                .build();
+    }
 
     public void assertSuccessStatusCode(HttpResponse<?> response) throws CestzamClientError {
         int code = response.statusCode();
@@ -140,7 +152,6 @@ public class CestzamResponseService {
 
     public <T> T parseJson(HttpResponse<String> response, Type type) {
         String body = response.body();
-        Jsonb jsonb = JsonbBuilder.create();
         T parsedEntity = jsonb.fromJson(body, type);
         return parsedEntity;
     }

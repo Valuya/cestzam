@@ -7,6 +7,7 @@ import be.valuya.cestzam.client.myminfin.MyminfinClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinCustomerRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinDocumentsRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinRestClientService;
+import be.valuya.cestzam.client.myminfin.rest.MyminfinUboRestClientService;
 import be.valuya.cestzam.client.request.CestzamRequestService;
 import be.valuya.cestzam.client.response.CestzamResponseService;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -42,6 +43,7 @@ public class CdiExtension implements TestInstancePostProcessor {
             .addBeanClasses(MyminfinRestClientService.class)
             .addBeanClasses(MyminfinDocumentsRestClientService.class)
             .addBeanClasses(MyminfinCustomerRestClientService.class)
+            .addBeanClasses(MyminfinUboRestClientService.class)
             .disableDiscovery()
             .initialize();
 

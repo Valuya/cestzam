@@ -1,0 +1,9 @@
+POST {{ws-uri}}/cestzam/service/myminfin/ubo/companies/search
+Accept: application/json
+Content-Type: application/json
+
+{
+  "myminfinContext": {
+    "cestzamContext": "{{cestzamContext}}"
+  }
+}

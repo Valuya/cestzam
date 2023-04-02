@@ -11,4 +11,7 @@ public class ConfigParam {
 
     @QueryParam("timeout")
     private Long timeout;
+
+    @QueryParam("language")
+    private String language;
 }

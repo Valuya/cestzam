@@ -2,22 +2,26 @@ package be.valuya.cestzam.ws.health;
 
 import be.valuya.cestzam.api.service.ServiceHealthCheck;
 import be.valuya.cestzam.api.service.ServiceHealthCheckResponse;
+import be.valuya.cestzam.client.czam.CestzamAuthenticatedSamlResponse;
+import be.valuya.cestzam.client.czam.CestzamLoginContext;
 import be.valuya.cestzam.client.czam.CzamCapacity;
 import be.valuya.cestzam.client.czam.CzamCitizenInfo;
 import be.valuya.cestzam.client.czam.CzamLoginClientService;
-import be.valuya.cestzam.client.czam.CestzamAuthenticatedSamlResponse;
-import be.valuya.cestzam.client.czam.CestzamLoginContext;
 import be.valuya.cestzam.client.error.CestzamClientError;
-import be.valuya.cestzam.client.myminfin.MyminfinClientService;
 import be.valuya.cestzam.client.myminfin.CestzamAuthenticatedMyminfinContext;
+import be.valuya.cestzam.client.myminfin.MyminfinClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinCustomerRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinDocumentsRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinRestClientService;
+import be.valuya.cestzam.client.myminfin.rest.MyminfinUboRestClientService;
 import be.valuya.cestzam.client.myminfin.rest.MyminfinVatBalanceClientService;
 import be.valuya.cestzam.client.myminfin.rest.UserData;
 import be.valuya.cestzam.client.myminfin.rest.documents.DocumentProviderGroup;
 import be.valuya.cestzam.client.myminfin.rest.documents.DocumentProvidersResponse;
 import be.valuya.cestzam.client.myminfin.rest.mandate.ApplicationMandate;
+import be.valuya.cestzam.client.myminfin.rest.ubo.CompaniesSearchRequest;
+import be.valuya.cestzam.client.myminfin.rest.ubo.CompaniesSearchResults;
+import be.valuya.cestzam.client.myminfin.rest.ubo.Company;
 import be.valuya.cestzam.client.myminfin.rest.vatbalance.CurrentVatBalance;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -75,6 +79,8 @@ public class CestzamHealthService {
     private MyminfinRestClientService myminfinRestClientService;
     @Inject
     private MyminfinVatBalanceClientService myminfinVatBalanceClientService;
+    @Inject
+    private MyminfinUboRestClientService myminfinUboRestClientService;
 
     public ServiceHealthCheckResponse checkMyminfinHealth() {
         if (!this.healthChecksEnabled) {
@@ -114,8 +120,9 @@ public class CestzamHealthService {
             ServiceHealthCheck citizenMandatesCheck = checkMyminfinCitizenMandates(authenticatedMyminfinContext);
             ServiceHealthCheck enterpriseMandateCheck = checkMyminfinEnterpriseMandates(authenticatedMyminfinContext);
             ServiceHealthCheck vatBalanceCheck = checkMyminfinVatBalance(authenticatedMyminfinContext);
+            ServiceHealthCheck uboCheck = checkUbo(authenticatedMyminfinContext);
             return createHealthCheckResponse(MYMINFIN_SERVICE_NAME, List.of(
-                    czamUserCheck, myminfinUserCheck, myminfinProvidersCheck, citizenMandatesCheck, enterpriseMandateCheck, vatBalanceCheck
+                    czamUserCheck, myminfinUserCheck, myminfinProvidersCheck, citizenMandatesCheck, enterpriseMandateCheck, vatBalanceCheck, uboCheck
             ));
         } catch (CestzamClientError cestzamClientError) {
             return createHealthErrorResponse(MYMINFIN_SERVICE_NAME, cestzamClientError.getMessage());
@@ -190,6 +197,32 @@ public class CestzamHealthService {
             CurrentVatBalance currentVatBalance = myminfinVatBalanceClientService.getCurrentVatBalance(authenticatedMyminfinContext);
             ServiceHealthCheck entrepriseMandateCheck = new ServiceHealthCheck(checkName, true, currentVatBalance.getCurrentPeriod() + " " + currentVatBalance.getCurrentDueAmount());
             return entrepriseMandateCheck;
+        } catch (CestzamClientError cestzamClientError) {
+            return createHealthCheckError(checkName, cestzamClientError);
+        }
+    }
+
+
+    private ServiceHealthCheck checkUbo(CestzamAuthenticatedMyminfinContext authenticatedMyminfinContext) {
+        String checkName = "myminfin.ubo";
+        try {
+            String appVersion = myminfinUboRestClientService.getApplicationVersion(authenticatedMyminfinContext.getCookies());
+
+            CompaniesSearchRequest searchRequest = new CompaniesSearchRequest();
+            searchRequest.setLanguage("fr");
+            CompaniesSearchResults companiesSearchResults = myminfinUboRestClientService.getCompaniesSearchResults(authenticatedMyminfinContext.getCookies(), searchRequest);
+
+            Company firstCompany = companiesSearchResults.getContent().stream()
+                    .findFirst()
+                    .orElse(null);
+            String checkResult = "version: " + appVersion;
+            if (firstCompany == null) {
+                checkResult += " - no company";
+            } else {
+                checkResult += " - " + firstCompany.getIdentificationNumber() + " confirmed on " + firstCompany.getConfirmationDate();
+            }
+            ServiceHealthCheck ubcoCheck = new ServiceHealthCheck(checkName, true, checkResult);
+            return ubcoCheck;
         } catch (CestzamClientError cestzamClientError) {
             return createHealthCheckError(checkName, cestzamClientError);
         }
